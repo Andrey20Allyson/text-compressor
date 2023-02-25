@@ -2,7 +2,7 @@
   "name": "text-compressor",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/index.js",
+  "main": "dist/compressor/index.js",
   "scripts": {
     "test": "vitest",
     "start": "ts-node src/index.ts",
