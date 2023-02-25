@@ -1,29 +1,40 @@
+import { DebugCompressRef } from "./debug";
 import { CompressRef } from "./reference";
 
-export type BaseOptions = {
+export interface BaseOptions {
   debug?: boolean;
 }
 
-export type CompressOptions = BaseOptions;
-export type DecompressOptions = BaseOptions;
+export interface CompressOptions extends BaseOptions {
+  searchLength?: number;
+}
 
-export function compress(data: Buffer, memoryLen: number, options?: CompressOptions) {
+export interface DecompressOptions extends BaseOptions { }
+
+export function compress(data: Buffer, options?: CompressOptions) {
+  const {
+    debug = false,
+    searchLength = data.length < 256 ** 2 ? data.length : 256 ** 2
+  } = options ?? {};
+
   const result: number[] = [];
 
+  const actualRef = CompressRef.create();
+
+  const BetterRefClass = debug ? DebugCompressRef : CompressRef;
+  const betterRef = BetterRefClass.create();
+
   for (let i = 0; i < data.length; i++) {
-    const actualRef = CompressRef.create();
-    const betterRef = CompressRef.create();
+    const searchInit = Math.min(searchLength, i);
 
-    const memoryLimit = Math.min(memoryLen, i);
-
-    for (let j = 0; j < memoryLimit; j++) {
-      const memoryIndex = i - memoryLimit + j;
+    for (let j = 0; j < searchInit; j++) {
+      const memoryIndex = i - searchInit + j;
 
       if (actualRef.started) {
         if (data[i + actualRef.length] === data[memoryIndex]) {
           actualRef.grow();
-          if (j === memoryLimit - 1 && data[i - actualRef.distance] === data[i + actualRef.length]) {
-            j = memoryLimit - actualRef.distance - 1;
+          if (j === searchInit - 1 && data[i - actualRef.distance] === data[i + actualRef.length]) {
+            j = searchInit - actualRef.distance - 1;
           }
         } else {
           const { distance } = actualRef;
@@ -32,10 +43,10 @@ export function compress(data: Buffer, memoryLen: number, options?: CompressOpti
 
           actualRef.reset();
 
-          j = memoryLimit - distance;
+          j = searchInit - distance;
         }
       } else if (data[i] === data[memoryIndex]) {
-        actualRef.startRef(memoryLimit - j);
+        actualRef.startRef(searchInit - j);
       }
     }
 
@@ -43,16 +54,21 @@ export function compress(data: Buffer, memoryLen: number, options?: CompressOpti
 
     const refBufferLength = betterRef.getBufferLength();
 
-    if (betterRef.length < refBufferLength) {
+    const dontUseRef = debug
+      ? betterRef.length <= 3
+      : betterRef.length <= refBufferLength;
+
+    if (dontUseRef) {
       result.push(data[i]);
-    } else {
-      if (options?.debug) {
-        result.push(...Buffer.from(`\0[D=${betterRef.distance}; L=${betterRef.length}]`))
-      } else {
-        result.push(...betterRef.toBuffer(refBufferLength));
-      }
-      i += betterRef.length - 1;
+      continue;
     }
+
+    result.push(...betterRef.toBuffer(refBufferLength));
+
+    i += betterRef.length - 1;
+
+    actualRef.reset();
+    betterRef.reset();
   }
 
   return Buffer.from(result);
@@ -60,7 +76,7 @@ export function compress(data: Buffer, memoryLen: number, options?: CompressOpti
 
 export function decompress(data: Buffer, options?: DecompressOptions) {
   const result: number[] = [];
-  let dif = 0;
+  let diference = 0;
 
   for (let i = 0; i < data.length; i++) {
     const byte = data[i];
@@ -70,43 +86,22 @@ export function decompress(data: Buffer, options?: DecompressOptions) {
       continue;
     }
 
-    if (options?.debug) {
-      const distanceStart = data.indexOf('D=', i) + 2;
-      const distanceEnd = data.indexOf(';', distanceStart);
-      const distance = +data.subarray(distanceStart, distanceEnd).toString('utf-8');
+    const RefClass = options?.debug ? DebugCompressRef : CompressRef;
 
-      const lengthStart = data.indexOf('L=', distanceEnd) + 2;
-      const lengthEnd = data.indexOf(']', lengthStart);
-      const length = +data.subarray(lengthStart, lengthEnd).toString('utf-8');
+    const ref = RefClass.fromBuffer(data, i);
+    if (!ref) continue;
 
-      const fullRefLen = lengthEnd - i + 1;
+    const { distance, length } = ref;
+    const bufferLength = ref.getBufferLength();
 
-      if (Number.isNaN(length) || Number.isNaN(distance)) throw Error('NaN Error');
+    for (let j = 0; j < length; j++) {
+      const refByte = result[diference + i - distance + j % distance];
 
-      for (let j = 0; j < length; j++) {
-        const refByte = result[dif + i - distance + j % distance];
-
-        result.push(refByte);
-      }
-
-      i += fullRefLen - 1;
-      dif += length - fullRefLen;
-    } else {
-      const ref = CompressRef.fromBuffer(data, i);
-      if (!ref) continue;
-
-      const { distance, length } = ref;
-      const bufferLength = ref.getBufferLength();
-
-      for (let j = 0; j < length; j++) {
-        const refByte = result[dif + i - distance + j % distance];
-
-        result.push(refByte);
-      }
-
-      i += bufferLength - 1;
-      dif += length - bufferLength;
+      result.push(refByte);
     }
+
+    i += bufferLength - 1;
+    diference += length - bufferLength;
   }
 
   return Buffer.from(result);

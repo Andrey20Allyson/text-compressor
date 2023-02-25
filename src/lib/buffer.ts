@@ -1,7 +1,7 @@
 import { digits } from "./number";
 
-export function minUInt32Length(value: number) {
-  if (value < 0 || value >= 256 ** 4) throw Error('value dont is a 32UInt');
+export function UInt32MinLength(value: number) {
+  if (value < 0 || value >= 256 ** 4) throw Error('value dont is a UInt32');
   return value < 256 ? 1 : digits(value, 256);
 }
 

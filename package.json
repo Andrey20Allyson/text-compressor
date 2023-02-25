@@ -10,6 +10,9 @@
     "watch": "tsc --watch"
   },
   "keywords": [],
+  "config": {
+    "testInputDir": "test-inputs"
+  },
   "author": "",
   "license": "MIT",
   "devDependencies": {
