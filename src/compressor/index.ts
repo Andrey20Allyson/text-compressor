@@ -1,8 +1,7 @@
 import * as bufferLib from "../lib/buffer";
 import { CompressRef } from "./reference";
 
-export function compress(text: string, memoryLen: number) {
-  const data = Buffer.from(text);
+export function compress(data: Buffer, memoryLen: number) {
   const result: number[] = [];
 
   for (let i = 0; i < data.length; i++) {
@@ -74,5 +73,5 @@ export function decompress(data: Buffer) {
     dif += len - fullRefLen;
   }
 
-  return Buffer.from(result).toString('utf-8');
+  return Buffer.from(result);
 }

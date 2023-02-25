@@ -13,13 +13,11 @@ const COMPRESSED_FILE_DIR = path.join(EXAMPLE_DIR, COMPRESSED_FILE_NAME);
 const DECOMPRESSED_FILE_DIR = path.join(EXAMPLE_DIR, DECOMPRESSED_FILE_NAME);
 
 async function main() {
-  const text = await fs.readFile(INPUT_FILE_DIR, { encoding: 'utf-8' });
-
-  const data = Buffer.from(text);
+  const data = await fs.readFile(INPUT_FILE_DIR);
 
   const cinit = Date.now();
 
-  const cdata = compress(text, 20_000);
+  const cdata = compress(data, 20_000);
 
   const cend = Date.now();
 
@@ -34,7 +32,7 @@ async function main() {
 
   const dcdata = decompress(cfdata);
 
-  console.log('decompression works: %s', dcdata == text);
+  console.log('decompression works: %s', dcdata.equals(data));
 
   await fs.writeFile(DECOMPRESSED_FILE_DIR, dcdata);
 }
