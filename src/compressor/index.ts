@@ -1,7 +1,13 @@
-import * as bufferLib from "../lib/buffer";
 import { CompressRef } from "./reference";
 
-export function compress(data: Buffer, memoryLen: number) {
+export type BaseOptions = {
+  debug?: boolean;
+}
+
+export type CompressOptions = BaseOptions;
+export type DecompressOptions = BaseOptions;
+
+export function compress(data: Buffer, memoryLen: number, options?: CompressOptions) {
   const result: number[] = [];
 
   for (let i = 0; i < data.length; i++) {
@@ -16,27 +22,35 @@ export function compress(data: Buffer, memoryLen: number) {
       if (actualRef.started) {
         if (data[i + actualRef.length] === data[memoryIndex]) {
           actualRef.grow();
+          if (j === memoryLimit - 1 && data[i - actualRef.distance] === data[i + actualRef.length]) {
+            j = memoryLimit - actualRef.distance - 1;
+          }
         } else {
-          const { length } = actualRef;
+          const { distance } = actualRef;
 
-          if (actualRef.isBiggerThan(betterRef)) betterRef.set(actualRef);
-          
+          if (actualRef.length >= betterRef.length) betterRef.set(actualRef);
+
           actualRef.reset();
 
-          j += 2 - length;
+          j = memoryLimit - distance;
         }
       } else if (data[i] === data[memoryIndex]) {
         actualRef.startRef(memoryLimit - j);
       }
     }
 
+    if (actualRef.length >= betterRef.length) betterRef.set(actualRef);
+
     const refBufferLength = betterRef.getBufferLength();
 
     if (betterRef.length < refBufferLength) {
       result.push(data[i]);
     } else {
-      result.push(...betterRef.toBuffer(refBufferLength));
-
+      if (options?.debug) {
+        result.push(...Buffer.from(`\0[D=${betterRef.distance}; L=${betterRef.length}]`))
+      } else {
+        result.push(...betterRef.toBuffer(refBufferLength));
+      }
       i += betterRef.length - 1;
     }
   }
@@ -44,7 +58,7 @@ export function compress(data: Buffer, memoryLen: number) {
   return Buffer.from(result);
 }
 
-export function decompress(data: Buffer) {
+export function decompress(data: Buffer, options?: DecompressOptions) {
   const result: number[] = [];
   let dif = 0;
 
@@ -56,21 +70,43 @@ export function decompress(data: Buffer) {
       continue;
     }
 
-    const refLen = byte + 1;
-    const startOffset = i + 1;
-    const lenOffset = i + 1 + refLen;
-    const start = bufferLib.toUInt32(data.subarray(startOffset, startOffset + refLen));
-    const len = bufferLib.toUInt32(data.subarray(lenOffset, lenOffset + refLen));
-    const fullRefLen = refLen * 2 + 1;
+    if (options?.debug) {
+      const distanceStart = data.indexOf('D=', i) + 2;
+      const distanceEnd = data.indexOf(';', distanceStart);
+      const distance = +data.subarray(distanceStart, distanceEnd).toString('utf-8');
 
-    for (let j = 0; j < len; j++) {
-      const refByte = result[dif + i - start + j];
+      const lengthStart = data.indexOf('L=', distanceEnd) + 2;
+      const lengthEnd = data.indexOf(']', lengthStart);
+      const length = +data.subarray(lengthStart, lengthEnd).toString('utf-8');
 
-      result.push(refByte);
+      const fullRefLen = lengthEnd - i + 1;
+
+      if (Number.isNaN(length) || Number.isNaN(distance)) throw Error('NaN Error');
+
+      for (let j = 0; j < length; j++) {
+        const refByte = result[dif + i - distance + j % distance];
+
+        result.push(refByte);
+      }
+
+      i += fullRefLen - 1;
+      dif += length - fullRefLen;
+    } else {
+      const ref = CompressRef.fromBuffer(data, i);
+      if (!ref) continue;
+
+      const { distance, length } = ref;
+      const bufferLength = ref.getBufferLength();
+
+      for (let j = 0; j < length; j++) {
+        const refByte = result[dif + i - distance + j % distance];
+
+        result.push(refByte);
+      }
+
+      i += bufferLength - 1;
+      dif += length - bufferLength;
     }
-
-    i += fullRefLen - 1;
-    dif += len - fullRefLen;
   }
 
   return Buffer.from(result);

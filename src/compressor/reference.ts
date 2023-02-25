@@ -1,14 +1,15 @@
 import * as bufferLib from '../lib/buffer';
 
 export class CompressRef {
+  #fixedBufferLength?: number;
   #started: boolean;
-  start: number;
+  distance: number;
   length: number;
 
-  constructor(length = 0, start = 0) {
+  private constructor(length = 0, distance = 0, started = false) {
     this.length = length;
-    this.start = start;
-    this.#started = false;
+    this.distance = distance;
+    this.#started = started;
   }
 
   get started() {
@@ -17,7 +18,7 @@ export class CompressRef {
 
   set(ref: CompressRef) {
     this.#started = ref.#started;
-    this.start = ref.start;
+    this.distance = ref.distance;
     this.length = ref.length;
   }
 
@@ -26,7 +27,9 @@ export class CompressRef {
   }
 
   getBufferLength() {
-    const maxValue = Math.max(this.start, this.length);
+    if (this.#fixedBufferLength) this.#fixedBufferLength;
+
+    const maxValue = Math.max(this.distance, this.length);
 
     return bufferLib.minUInt32Length(maxValue) * 2 + 1;
   }
@@ -39,31 +42,47 @@ export class CompressRef {
     return ++this.length;
   }
 
-  startRef(index: number) {
-    this.start = index;
+  startRef(distance: number) {
+    this.distance = distance;
     this.#started = true;
     this.length = 1;
   }
 
   reset() {
     this.length = 0;
-    this.start = 0;
+    this.distance = 0;
     this.#started = false;
   }
 
   toBuffer(bufferLength?: number) {
-    let valueBufferLength = CompressRef.singleValueLength(bufferLength ?? this.getBufferLength());
+    const valueBufferLength = CompressRef.singleValueLength(bufferLength ?? this.getBufferLength());
 
-    let len = bufferLib.fromUInt32(this.length, valueBufferLength);
-    let start = bufferLib.fromUInt32(this.start, valueBufferLength);
+    const length = bufferLib.fromUInt32(this.length, valueBufferLength);
+    const distance = bufferLib.fromUInt32(this.distance, valueBufferLength);
 
-    return Buffer.from([valueBufferLength - 1, ...start, ...len]);
+    return Buffer.from([valueBufferLength - 1, ...distance, ...length]);
   }
-  
-  static fromBuffer() {
 
+  static fromBuffer(buffer: Buffer, offset: number = 0) {
+    for (let i = offset; i < buffer.length; i++) {
+      const byte = buffer[i];
+
+      if (byte < 4) {
+        const singleValueLength = byte + 1;
+        const startOffset = i + 1;
+        const lenOffset = i + 1 + singleValueLength;
+        const distance = bufferLib.toUInt32(buffer.subarray(startOffset, startOffset + singleValueLength));
+        const length = bufferLib.toUInt32(buffer.subarray(lenOffset, lenOffset + singleValueLength));
+
+        const ref = new this(length, distance, true);
+
+        ref.#fixedBufferLength = singleValueLength * 2 + 1;
+
+        return ref;
+      }
+    }
   }
-  
+
   static singleValueLength(bufferLength: number) {
     return (bufferLength - 1) / 2;
   }
