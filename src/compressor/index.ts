@@ -60,12 +60,10 @@ export function compress(data: Buffer, options?: CompressOptions) {
 
     if (dontUseRef) {
       result.push(data[i]);
-      continue;
+    } else {
+      result.push(...betterRef.toBuffer(refBufferLength));
+      i += betterRef.length - 1;
     }
-
-    result.push(...betterRef.toBuffer(refBufferLength));
-
-    i += betterRef.length - 1;
 
     actualRef.reset();
     betterRef.reset();
