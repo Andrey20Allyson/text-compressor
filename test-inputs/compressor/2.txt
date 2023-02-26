@@ -1,0 +1,198 @@
+Saltar para o conteúdo
+Alternar barra lateral
+
+Wikipédia
+Pesquisar na Wikipédia
+Criar uma conta
+Entrar
+
+Ferramentas pessoais
+Fotografe a sua cultura local, ajude a Wikipédia e ganhe prémios!Esconder
+[ocultar]
+Conteúdo ocultar
+Início
+Algoritmo
+Exemplo
+Aplicações
+Exemplo de implementação
+Referências
+Bibliografia
+Ver também
+LZ77
+
+Artigo
+Discussão
+Ler
+Editar
+Ver histórico
+Origem: Wikipédia, a enciclopédia livre.
+LZ77 foi um dos algoritmos de compressão de dados desenvolvidos por Abraham Lempel e Jacob Ziv em 1977, juntamente com o outro algoritmo de compressão LZ78 publicado em 1978. Nos primeiros artigos publicados eles eram conhecidos por LZ1 e LZ2, respetivamente, e só depois ganharam o ano de sua publicação em suas siglas.[1]
+
+O algoritmo LZ77 se baseia na utilização das partes que já foram lidas de um arquivo como um dicionário, substituindo as próximas ocorrências das mesmas sequências de caracteres pela posição (absoluta ou relativa) da sua última ocorrência. Para limitar o espaço de busca e de endereçamento necessário, as ocorrências anteriores são limitadas por uma "janela deslizante" (do inglês sliding window) que tem tamanho fixo e "desliza" sobre o arquivo, delimitando o início e fim da área onde serão buscadas as ocorrências anteriores. O tamanho desta janela é um dos fatores primordiais para se ajustar a performance desse algoritmo.
+
+Algoritmo
+O algoritmo LZ77 é relativamente simples. Define-se inicialmente duas estruturas que serão usadas: A janela de procura, e o buffer de look-ahead (num tradução livre poderia ser chamado de buffer de pré-visualização). A janela representa as partes do arquivo que já foram lidos, enquanto o look-ahead representa o que ainda será lido e processado pelo algoritmo. Na prática, o look-ahead é preenchido de antemão com os próximos bytes a serem processados pelo compressor. A janela tem tamanho definido, e deve permitir que os dados sejam enfileirados dentro dela, eliminando os bytes mais antigos quando seu limite de tamanho é atingido. O buffer de look-ahead também tem tamanho definido, em geral dezenas de vezes menor que a janela.
+
+De posse dessas estruturas verificamos a sequência de caracteres atualmente presente no buffer, e qual o maior casamento de prefixo dessa sequência dentro da janela (qual a maior sequência da janela casa exatamente com o início da sequência do buffer). Ao encontrar tal sequência emitimos na saída a tupla 
+(
+�
+�
+�
+�
+,
+�
+�
+�
+�
+,
+�
+)
+{\displaystyle (S_{pos},S_{tam},c)} onde 
+�
+�
+�
+�
+{\displaystyle S_{pos}} é a posição da sequência casada dentro da janela (contada em geral de trás para diante), 
+�
+�
+�
+�
+{\displaystyle S_{tam}} é o tamanho dessa sequência, e 
+�
+c é o próximo carácter presente no buffer depois dessa sequência. Este caractere 
+�
+c é comummente chamado de literal, ou carácter literal (do inglês literal character).
+
+Transferimos então toda a sequência casada e mais o carácter extra para a janela (chama-se esse processo de deslizamento a janela ou window slide em inglês), que tem seus elementos mais antigos removidos (caso esteja cheia). O buffer é preenchido com novos dados lidos do arquivo, e continuamos o processo até o final do arquivo.
+
+No caso de não ser encontrado nenhum casamento dentro da janela, emite-se a tupla 
+(
+0
+,
+0
+,
+�
+)
+{\displaystyle (0,0,c)}, indicando que houve um "casamento" de tamanho 0, e apenas o carácter 
+�
+c é transferido para o buffer.
+
+O processo de descompressão é bem mais simples pois não precisa fazer nenhum tipo de casamento de padrão, basta copiar os caracteres indicados pela tupla, na quantidade indicada, para a saída e acrescentar o carácter 
+�
+c, repetindo o processo até o fim das tuplas. Por essa diferença grande entre complexidade de compressão e descompressão diz-se que o algoritmo LZ77 é um algoritmo de compressão assimétrico.
+
+Note que o tamanho da janela e do buffer impactam diretamente na performance do compressor: quanto maior eles forem, melhor a compressão, mas também mais lenta ela fica. O tamanho dessas estruturas deve ser bem estudado quando da implementação desse algoritmo.
+
+Exemplo
+Abaixo ilustramos o algoritmo LZ77 com um exemplo da compressão da cadeia A_ASA_DA_CASA, usando janela de tamanho 8 e buffer de look-ahead de tamanho 4.
+
+Janela	Buffer	Restante do arquivo	Tupla emitida
+A_AS	A_DA_CASA	(0,0,A)
+A	_ASA	_DA_CASA	(0,0,_)
+A_	ASA_	DA_CASA	(1,1,S)
+A_AS	A_DA	_CASA	(3,2,D)
+A_ASA_D	A_CA	SA	(2,2,C)
+ASA_DA_C	ASA		(7,3,EOF)
+Temos então 6 tuplas, cada tupla ocupa 15 bits (4 para a posição dentro da janela, 3 para o tamanho e 8 para o carácter no final), perfazendo 90 bits. Comparado com a cadeia original de 104 bits (13 bytes) a compressão não é muito boa, mas para arquivos maiores o tamanho da janela pode ser ajustado, assim como o tamanho do buffer, conseguindo taxas de compressão bem melhores.
+
+Aplicações
+Alguns programas e formatos de compressão de dados largamente utilizados usam este algoritmo, pois ao contrário do LZ78 e do LZW, seus parentes mais próximos, ele não estava coberto por patentes. A variante mais comum do LZ77 é conhecida como DEFLATE e combina o uso de LZ77 com o uso de Código Huffman. Entre os programas e formatos que usam LZ77 e DEFLATE temos:
+
+O programa PKZIP e o formato de arquivos ZIP (além de todos os outros programas baseados nesse formato).
+O programa gzip.
+O formato de imagens PNG.
+Exemplo de implementação
+# !/usr/bin/python
+# coding: utf-8
+
+import sys
+
+class lz77:
+    """
+       Esta classe comprime uma sequêencia de caracteres usando
+       o algoritmo LZ77 como descrito em
+
+       Esta é uma implementação didática, para exemplificar
+       o funcionamento do algoritmo, e não possui nenhum tipo de
+       otimização, por isso seu desempenho em situações reais
+       deve ser muito abaixo do esperado.
+    """
+    def __init__(self, window_size = 65535, buffer_size=255):
+        """
+           Carrega os parâmetros de tamanho de janela e buffer
+           de look-ahead
+        """
+        self.window_size = window_size
+        self.buffer_size = buffer_size
+    def encode(self, str):
+        """
+            Aplica o algoritmo LZ77 na cadeia de entrada, gerando
+            uma lista de "tuplas" na saída. Cada tupla corresponde
+            a (posição, tamanho, literal) onde posição é a posição
+            relativa da cadeia encontrada na janela, tamanho é o
+            tamanho dessa cadeia e literal é o símbolo que segue
+            a cadeia nessa sequência.
+        """
+        ret = []
+        i = 0
+        while i < len(str):
+            begin_window = i-self.window_size
+            if begin_window < 0:
+                begin_window = 0
+            window = str[begin_window:i]
+            buffer = str[i:i+self.buffer_size]
+            tuple = (0, 0, str[i])
+            # Este "loop" é o "coração" do algoritmo. Aqui procuramos
+            # a maior sequência dentro da janela (window) que case
+            # com o início do buffer. A implementação atual simplesmente
+            # procura por ocorrências de substrings cada vez menores
+            # do buffer até encontrar alguma. Implementações mais
+            # eficientes usariam um dicionário de prefixos, uma trie
+            # ou uma tabela de espalhamento.
+            for size in range(len(buffer), 0, -1):
+                index = window.rfind(buffer[0:size])
+                if index >= 0:
+                    literal = '' # a string vazia representa
+                                 # o final do arquivo.
+                    if i + size < len(str):
+                        literal = str[i+size]
+                    tuple = (len(window)-index-1, size, literal)
+                    break
+            i = i + tuple[1] + 1
+            ret = ret + [tuple]
+        return ret
+    def decode(self, list):
+        """
+            A decodificação é extremamente simples: basta copiar a
+            subsequência indicada pela tupla para o final da sequência
+            de saída e acrescentar o novo carácter literal.
+        """
+        ret = ''
+        for tuple in list:
+            pos = len(ret) - tuple[0] - 1
+            ret = ret + ret[pos:pos+tuple[1]] + tuple[2]
+        return ret
+
+if __name__ == "__main__":
+    str = 'A_ASA_DA_CASA'
+    encoder = lz77(8,4)
+    encoded = encoder.encode(str)
+    print encoded
+
+    decoder = lz77(8,4)
+    decoded = decoder.decode(encoded)
+    print decoded
+Referências
+ SALOMON, David (2000). Data Compression. The Complete Reference 2 ed. Nova Iorque: Springer
+Bibliografia
+ZIV, Jacob, LEMPEL, Abraham; A Universal Algorithm for Sequential Data Compression, IEEE Transactions on Information Theory, 23(3), pp. 337–343, maio de 1977. Disponível em formato PDF em http://www.cs.duke.edu/courses/spring03/cps296.5/papers/ziv_lempel_1977_universal_algorithm.pdf
+Ver também
+LZ78
+DEFLATE
+compressão sem perda de dados
+Codificação Run-length
+Ícone de esboço	Este artigo sobre programação de computadores é um esboço. Você pode ajudar a Wikipédia expandindo-o.
+Categoria: Algoritmos de compressão de dados
+Esta página foi editada pela última vez às 19h54min de 16 de abril de 2020.
+Este texto é disponibilizado nos termos da licença Atribuição-CompartilhaIgual 3.0 Não Adaptada (CC BY-SA 3.0) da Creative Commons; pode estar sujeito a condições adicionais. Para mais detalhes, consulte as condições de utilização.
+Política de privacidadeSobre a WikipédiaAvisos geraisVersão móvelProgramadoresEstatísticasDeclaração sobre ''cookies''Wikimedia FoundationPowered by MediaWiki

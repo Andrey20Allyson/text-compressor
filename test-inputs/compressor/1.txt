@@ -1,0 +1,282 @@
+Steve the DevSteve the Dev
+Software Engineer | Software Architect
+Email Facebook Linked In Twitter Google+ Github
+HOME
+BLOG 
+CONTACT
+ABOUT
+Blog Programming Public, Private, and Protected Scope in JavaScript
+Public, Private, and Protected Scope in JavaScript
+Posted by Steven Jimenez in Programming on Apr 08, 2018
+
+Of the features that has always been painfully missing from JavaScript, one of the most impactful is the conspicuous inability to use the public, private, and protected keywords to explicitly state the access-controls of class members. I would imagine that this particular deficiency owes its origins to the same decisions that led to JavaScript not having a class keyword until ECMAScript 6 came about. Regardless of its origins, however, it's a feature whose absence I've always lamented — and one which many developers have sought to emulate.
+
+Over the last couple of years, I've found that my favorite implementation is to use the built-in WeakMap object to give me the features I need. Although it's not perfect, it does suit my needs in a way that other solutions do not. I'll explain:
+
+What do I mean when I say public, private, and protected scope?
+If you've been programming for a while, then there is a pretty good chance that you've been exposed to these concepts before. If you are a little confused as to what scope means, then you may want to read more about it in my introduction to JavaScript's implementation of Scope. The CliffsNotes?
+
+Scope defines which variables a line of code can read or write while the program is running.
+
+The ability to define context-based access-controls on a class member is a pretty standard feature of Object-Oriented Programming languages. A typical implementation would follow a fairly simple set of rules:
+
+A class member that has been declared public is available to everything that is able to access the class instance that owns the member.
+A class member that has been declared private is only accessible from within the class that instantiated the object.
+A class member that has been declared protected is only accessible by the object that owns the values.
+If this sounds complicated, don't worry. I'll explain this in more detail.
+
+Public Scope
+I mentioned earlier that public scope is available to everything that is able to access a class' instantiated object. If this sounds obvious, it's because that's the only way JavaScript does things. If you create an object in JavaScript, you can access all of its properties:
+
+const object = { publicProperty: "I'm Public!" };
+So long as you can access object, you can also access publicProperty and any other property that is attached in this way.
+
+Private Scope
+Unlike public scope, private scope is only accessible to the object that owns the scope. By convention, there are two ways that people typically accomplish this: conventional privacy, and closures.
+
+Conventional Privacy takes the form of marking class members with some defining characteristic — often an underscore — to tell other programmers that they shouldn't mess with it:
+
+const object = {
+    _conventionallyPrivate: "Just promise not to use me, please! :)",
+    publicProperty: "I'm Public!",
+};
+If you're trying to prevent tampering, then this provides some obvious problems. Inserting an underscore doesn't prevent code from reading or (more importantly) writing to variables they have no business modifying.
+
+object._conventionallyPrivate = 'I do what I want! #hacker';
+The most common way of preventing this tampering would be to create a closure. In this context, a closure is a technique for creating a function scope for the explicit purpose of limiting access to a set of values. Consider this example:
+
+function getObject() {
+    const actuallyPrivate = 'Actually private';
+    return {
+        getPrivate: function() { return actuallyPrivate; }
+    };
+}
+This is useful, but it has one major drawback: you can't share variables between scopes. Given a class or a constructor function, values that are created within a closure could not be shared by other methods of the class. This forces us to create new instances of every function that may access these values. This can lead to clumsy class definitions and complicate long-term maintenance. Not to mention, it's ugly.
+
+function Database() {
+    const authenticaton = 'Actually private';
+    // Less versatile
+    this.connect = function() {
+        // can access the authentication token
+    };
+}
+
+// More memory efficient
+Database.prototype.connect = function() {
+    // cannot access the authentication token
+}
+An ideal implementation of a private variable would let me define functions on the prototype, while also restricting access to the functions defined on the class.
+
+Protected Scope
+A typical implementation of a protected scope blends some of the features of public and private scope and is the hardest scope to reproduce in JavaScript. The two important features of a protected scope, in my estimation, are (1) a protected value must be shared across all layers in the prototype chain; and (2) a protected value must not be accessible from outside of the object.
+
+Putting a protected value in the public scope is a poor solution because it would not place any limits on accessing that value:
+
+var object = { _notProtected: "I'm a public property!" };
+However, putting a protected scope is also a poor solution because it would not allow sub-classes or parent-classes to access the value:
+
+class Database {
+    constructor() {
+        const authentication = "I'm a private property!";
+        this.connect = function() {
+            alert('I can access ' + authentication);
+        };
+    }
+}
+
+class CoolDatabase extends Database {
+    constructor() {
+        this.connect = function() {
+            alert("I can't access [authentication] at all!  :(");
+        };
+    }
+
+    connect() {
+        alert("I also can't access [authentication] #foiledagain");
+    }
+}
+Click to Expand
+An ideal solution to this problem would allow any method within an object's prototype chain to access a value, while also denying access by any other object. In JavaScript, that's a pretty tall order.
+
+The Solution
+We don't need to do anything to get public scope — this is the default behavior! To get private and protected scopes, however, we need a way to grant access to values across functional scopes based on the context. For this behavior, a WeakMap is a near-perfect solution!
+
+At the time of this writing, WeakMaps are supported across all major browsers on mobile and desktop (yay!). If you aren't familiar with WeakMaps — and you can be forgiven for not knowing — they are key-value stores that do not prevent garbage collection on their keys. This makes them preferable to a Map object because Maps still track values, and it makes them preferable to Dictionaries because they can use non-primitive keys.
+
+A Simple Private Implementation
+One way of implementing a simple private scope would be to declare a WeakMap and a class within the same closure. This would let us instantiate new objects, grant cross-function access to the private scope, and prevent access to the WeakMap from outside of the closure:
+
+const Database = (function() {
+    const $private = new WeakMap();
+
+    function constructor() {
+        $private.set(this, { authentication: "I'm a private variable" });
+    }
+
+    constructor.prototype.connect = function() {
+        // I can access the private values
+        $private.get(this).authentication;
+    }
+
+    return constructor;
+})();
+
+// No way to access $private out here
+const db = new Database();
+Click to Expand
+Unfortunately, this solution won't let us share the WeakMap with subclasses. In order to do that, the WeakMap must be declared outside of the closure. My solution to the problem is to put the WeakMap in a separate module and import it as necessary.
+
+My Implementation
+My solution to the problem of private and protected scope is to create a separate module. Both scopes are implemented with WeakMaps and both scopes index on the this context. In the name of simplicity (and also laziness) I prefer to strip away the getters, setters, and other functions for the map and obscure them behind a class:
+
+// Wrap our container with a simplified interface
+function getAccessor(container) {
+    // Simplify the container's interface:
+    return function(context) {
+        if (!container.has(context)) {
+            container.set(context, {});
+        }
+        return container.get(context);
+    }
+}
+
+function createScope() {
+    return {
+        $private: getAccessor(new WeakMap()),
+    };
+}
+Click to Expand
+If createScope is executed within the class-definition closure, then it works essentially like the simple private implementation.
+
+const Database = (function() {
+    const { $private } = createScope();
+
+    function constructor() {
+        $private(this).authentication = "Still super-private";
+    }
+
+    constructor.prototype.connect = function() {
+        alert('I can still access ' + $private(this).authentication);
+    };
+
+    return constructor;
+})();
+Click to Expand
+But what about protected variables?
+
+I'm glad you asked! In order to create a protected variable, we can create a WeakMap within the scoping module:
+
+const protectedMap = new WeakMap();
+
+// Wrap our container with a simplified interface
+function getAccessor(container) {
+    // Simplify the container's interface:
+    return function(context) {
+        if (!container.has(context)) {
+            container.set(context, {});
+        }
+        return container.get(context);
+    }
+}
+
+function createScope() {
+    return {
+        $private: getAccessor(new WeakMap()),
+        $protected: getAccessor(protectedMap),
+    };
+}
+Click to Expand
+Although this isn't a perfect solution, it does allow us to share values between classes. Consider these two classes:
+
+// Base Class
+const Base = (function() {
+    const { $protected, $private } = createScope();
+
+    return class Base {
+        constructor() {
+            $private(this).value = "I'm a private variable";
+            $protected(this).value = "I'm a protected variable";
+        }
+
+        getBasePrivate() {
+            return $private(this).value;
+        }
+
+        getBaseProtected() {
+            return $protected(this).value;
+        }
+    };
+})();
+
+// Sub Class
+const Sub = (function() {
+    const { $protected, $private } = createScope();
+
+    return class Sub extends Base {
+        constructor() {
+            super();
+            $private(this).value = "I'm also a private variable";
+            $protected(this).value = "I'm also a protected variable";
+        }
+
+        getSubPrivate() {
+            return $private(this).value;
+        }
+
+        getSubProtected() {
+            return $protected(this).value;
+        }
+    };
+})();
+Click to Expand
+In this example, the Parent and Sub classes have separate private scopes, and overlapping protected scopes:
+
+const base = new Base();
+const sub = new Sub();
+
+base.getBasePrivate();   // "I'm a private variable"
+base.getBaseProtected(); // "I'm a protected variable"
+
+sub.getBasePrivate();    // "I'm a private variable"
+sub.getSubPrivate();   // "I'm also a private variable"
+sub.getBaseProtected();  // "I'm also a protected variable"
+sub.getSubProtected(); // "I'm also a protected variable"
+Conclusion
+This isn't a perfect solution, but it is my favorite. WeakMaps are now broadly supported in all major browsers, and most of my JavaScript work is done in Node.js anyway. Not to mention, the syntax makes for some really obvious code. As a cherry-on-top benefit, this method also lets instances of the same class access each others' private members — which should be familiar territory for many software engineers.
+
+There are two minor drawbacks to using this method:
+
+A WeakMap is significantly slower than attaching values directly to an object. In my testing, I get between 1-million and 2-million accesses per second.
+The protected accessor can be used anywhere, so it's mostly security by obscurity. Remember that JavaScript exposes the source-code to anyone who cares to look, so don't expect this to be a silver-bullet for security.
+For my purposes, this is good enough until the private and protected keywords make their way into the official language specifications. If these drawbacks are too severe for any problem that I'm approaching, then JavaScript probably isn't the right language for the job in the first place.
+
+If you want to incorporate this into your own projects, feel free to install the StD Scope module from NPM. If you just want to take a look at a completed module, head over to my GitHub to take a look at the repository.
+
+If you liked this post, please share it with your friends and leave a comment below!
+ Share on Facebook Tweet Share on Google+Share on LinkedIn
+Related Blog Posts
+
+JavaScript: Context
+In a singly linked list, the data structure tracks the "head" node and each node tracks the next node in the chain.
+Implementing the Singly Linked List
+
+JavaScript: Scope
+
+Taking a look at Web Assembly
+Comments
+
+
+Join the Mailing List
+Have new content delivered directly to your email.
+Email Address *
+First Name
+Last Name
+Recent Blog PostsRSS Feed
+When will Rust become as popular as C++ or Java?
+May 07, 2020 - It’s unlikely that Rust will become “as popular” as C++ or Java without a few things happening first.
+Can Node use threaded Rust libraries?
+Oct 11, 2019 - The short answer: YES!
+How to thread JavaScript
+Oct 07, 2019 - This did *exactly* what I had hoped it would.
+Copyright © 2017-2023 Steven Jimenez. All Rights Reserved.
+Back to top

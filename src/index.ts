@@ -4,7 +4,7 @@ import { compress, decompress } from './compressor';
 
 const EXAMPLE_DIR = 'example';
 
-const INPUT_FILE_NAME = 'test.txt';
+const INPUT_FILE_NAME = 'input.md';
 const COMPRESSED_FILE_NAME = 'compressed'
 const DECOMPRESSED_FILE_NAME = 'decompressed.md';
 
