@@ -21,6 +21,9 @@
     "typescript": "4.9.5",
     "vitest": "0.28.5"
   },
+  "repository": {
+    "url": "https://github.com/Andrey20Allyson/text-compressor"
+  },
   "files": [
     "dist",
     "package.json",
